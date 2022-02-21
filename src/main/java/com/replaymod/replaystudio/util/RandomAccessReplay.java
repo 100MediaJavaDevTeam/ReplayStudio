@@ -19,20 +19,20 @@
 
 package com.replaymod.replaystudio.util;
 
-import com.github.steveice10.netty.buffer.ByteBuf;
-import com.github.steveice10.netty.buffer.Unpooled;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
 import com.github.steveice10.packetlib.io.NetInput;
 import com.github.steveice10.packetlib.io.NetOutput;
 import com.github.steveice10.packetlib.io.stream.StreamNetInput;
 import com.github.steveice10.packetlib.io.stream.StreamNetOutput;
 import com.github.steveice10.packetlib.tcp.io.ByteBufNetInput;
 import com.github.steveice10.packetlib.tcp.io.ByteBufNetOutput;
-import com.replaymod.replaystudio.lib.guava.base.Optional;
-import com.replaymod.replaystudio.lib.guava.collect.ListMultimap;
-import com.replaymod.replaystudio.lib.guava.collect.Multimaps;
+import com.google.common.base.Optional;
+import com.google.common.collect.ListMultimap;
+import com.google.common.collect.Multimaps;
 import com.replaymod.replaystudio.PacketData;
 import com.replaymod.replaystudio.io.ReplayInputStream;
-import com.replaymod.replaystudio.lib.viaversion.api.minecraft.chunks.PaletteType;
+import com.viaversion.viaversion.api.minecraft.chunks.PaletteType;
 import com.replaymod.replaystudio.protocol.Packet;
 import com.replaymod.replaystudio.protocol.PacketTypeRegistry;
 import com.replaymod.replaystudio.protocol.packets.PacketBlockChange;
@@ -49,7 +49,7 @@ import com.replaymod.replaystudio.protocol.packets.PacketUpdateLight;
 import com.replaymod.replaystudio.protocol.packets.PacketUpdateViewDistance;
 import com.replaymod.replaystudio.protocol.packets.PacketUpdateViewPosition;
 import com.replaymod.replaystudio.replay.ReplayFile;
-import com.replaymod.replaystudio.lib.viaversion.api.protocol.version.ProtocolVersion;
+import com.viaversion.viaversion.api.protocol.version.ProtocolVersion;
 
 import java.io.EOFException;
 import java.io.IOException;
