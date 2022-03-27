@@ -46,7 +46,7 @@ configurations {
 }
 
 dependencies {
-    apiShade 'com.github.replaymod.viaversion:viaversion-common:8f78683'
+    apiShade 'com.github.replaymod.viaversion:viaversion-common:88dd62c'
 
     apiShade 'com.google.guava:guava:17.0'
     shade 'com.google.code.gson:gson:2.3.1'
