@@ -28,6 +28,7 @@ import com.viaversion.viaversion.api.protocol.version.ProtocolVersion;
 import com.replaymod.replaystudio.protocol.Packet;
 import com.replaymod.replaystudio.protocol.PacketType;
 import com.replaymod.replaystudio.protocol.PacketTypeRegistry;
+import com.replaymod.replaystudio.util.Utils;
 import org.apache.commons.lang3.tuple.Pair;
 
 import java.io.ByteArrayInputStream;
@@ -35,6 +36,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.BitSet;
+import java.util.Collections;
 import java.util.List;
 import java.util.zip.DataFormatException;
 import java.util.zip.Deflater;
@@ -77,7 +79,10 @@ public class PacketChunkData {
         if (atLeastV1_9) {
             packetType = isUnload ? PacketType.UnloadChunk : PacketType.ChunkData;
         } else {
-            packetType = PacketType.ChunkData;
+            // On these versions, there's an ambiguity between the unload packet and a packet which loads an empty chunk
+            // because the latter is special cased to unload rather than load. The only way to load an empty chunk
+            // therefore is to use the BulkChunkData packet, which doesn't have this special handling.
+            packetType = !isUnload && column.looksLikeUnloadOnMC1_8() ? PacketType.BulkChunkData : PacketType.ChunkData;
         }
         Packet packet = new Packet(registry, packetType);
         try (Packet.Writer writer = packet.overwrite()) {
@@ -88,7 +93,15 @@ public class PacketChunkData {
                     writeLoad(packet, writer);
                 }
             } else {
-                writeLoad(packet, writer);
+                if (packetType == PacketType.BulkChunkData) {
+                    if (packet.atLeast(ProtocolVersion.v1_8)) {
+                        writeBulkV1_8(packet, writer, Collections.singletonList(column));
+                    } else {
+                        writeBulkV1_7(packet, writer, Collections.singletonList(column));
+                    }
+                } else {
+                    writeLoad(packet, writer);
+                }
             }
         }
         return packet;
@@ -129,6 +142,21 @@ public class PacketChunkData {
             result.add(readColumn(packet, buf, xs[column], zs[column], true, skylight, masks[column], new BitSet(), null, null, false));
         }
         return result;
+    }
+
+    private static void writeBulkV1_8(Packet packet, Packet.Writer out, List<Column> columns) throws IOException {
+        out.writeBoolean(columns.stream().anyMatch(Column::hasSkyLightV1_8));
+        out.writeVarInt(columns.size());
+
+        for (Column column : columns) {
+            out.writeInt(column.x);
+            out.writeInt(column.z);
+            out.writeBitSet(column.getChunkMask());
+        }
+
+        for (Column column : columns) {
+            writeColumn(packet, out, column, true);
+        }
     }
 
     private static List<Column> readBulkV1_7(Packet packet, Packet.Reader in) throws IOException {
@@ -177,6 +205,10 @@ public class PacketChunkData {
         }
 
         return result;
+    }
+
+    private static void writeBulkV1_7(Packet packet, Packet.Writer out, List<Column> columns) throws IOException {
+        throw new UnsupportedOperationException("writeBulkV1_7 is not yet implemented");
     }
 
     public static PacketChunkData load(Column column) {
@@ -552,6 +584,29 @@ public class PacketChunkData {
             return this.biomeData != null || this.biomes != null || (this.lightData != null && this.tileEntities != null);
         }
 
+        public boolean looksLikeUnloadOnMC1_8() {
+            return isFull() && Utils.containsOnlyNull(chunks);
+        }
+
+        public BitSet getChunkMask() {
+            BitSet mask = new BitSet();
+            for (int index = 0; index < chunks.length; index++) {
+                if (chunks[index] != null) {
+                    mask.set(index);
+                }
+            }
+            return mask;
+        }
+
+        public boolean hasSkyLightV1_8() {
+            for (Chunk chunk : chunks) {
+                if (chunk != null && chunk.skyLight != null) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         public static long coordToLong(int x, int z) {
             return (long)x << 32 | (long)z & 0xFFFFFFFFL;
         }
@@ -678,6 +733,7 @@ public class PacketChunkData {
         PalettedStorage(PaletteType type, Packet packet) {
             this.type = type;
             this.registry = packet.getRegistry();
+            this.bitsPerEntry = type.highestBitsPerValue() + 1; // these versions never use a local palette
         }
 
         // 1.9+
@@ -726,7 +782,7 @@ public class PacketChunkData {
         }
 
         /**
-         * Only 1.9+
+         * Only 1.8+
          */
         public int get(int x, int y, int z) {
             if (this.bitsPerEntry == 0) {
@@ -737,7 +793,7 @@ public class PacketChunkData {
         }
 
         /**
-         * Only 1.9+
+         * Only 1.8+
          */
         public void set(int x, int y, int z, int state) {
             int id = this.bitsPerEntry <= type.highestBitsPerValue() ? this.states.indexOf(state) : state;
