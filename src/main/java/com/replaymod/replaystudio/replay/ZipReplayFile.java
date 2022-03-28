@@ -20,6 +20,7 @@ package com.replaymod.replaystudio.replay;
 
 import com.google.common.base.Charsets;
 import com.google.common.base.Optional;
+import com.google.common.collect.Streams;
 import com.google.common.io.Closeables;
 import com.replaymod.replaystudio.Studio;
 import com.replaymod.replaystudio.util.Utils;
@@ -104,16 +105,16 @@ public class ZipReplayFile extends AbstractReplayFile {
 
         // Try to restore any changes if we weren't able to save them last time
         if (changedFiles.exists()) {
-            fileTreeTraverser()
-                    .breadthFirstTraversal(changedFiles)
+            Streams.stream(fileTraverser()
+                    .breadthFirst(changedFiles))
                     .filter(isFile())
                     .forEach(f -> changedEntries.put(changedFiles.toURI().relativize(f.toURI()).getPath(), f));
         }
         if (removedFiles.exists()) {
-            fileTreeTraverser()
-                    .breadthFirstTraversal(removedFiles)
+            Streams.stream(fileTraverser()
+                    .breadthFirst(removedFiles))
                     .filter(isFile())
-                    .transform(f -> removedFiles.toURI().relativize(f.toURI()).getPath())
+                    .map(f -> removedFiles.toURI().relativize(f.toURI()).getPath())
                     .forEach(removedEntries::add);
         }
 
