@@ -166,6 +166,8 @@ public class SquashFilter implements StreamFilter {
     private final Map<Long, ChunkData> chunks = new HashMap<>();
     private final Map<Long, Long> unloadedChunks = new HashMap<>();
 
+    private CompoundTag registries;
+
     /**
      * The behavior of the Respawn packet depends on the current world. While vanilla seems to never
      * make any use of that fact, custom server and proxies do, so we need to take it into consideration.
@@ -177,17 +179,29 @@ public class SquashFilter implements StreamFilter {
      */
     private DimensionType dimensionType;
 
-    public SquashFilter(String dimension, DimensionType dimensionType) {
+    /**
+     * We rely on the timestamps to keep relative packet order. However, by default, two packets may have the same
+     * timestamp, in which case their relative order may be affected by the place in which we store the packet, and that
+     * change may break things (e.g. set block needs to be sent before the corresponding block entity data packet, but
+     * we process them the other way round).
+     * We therefore need to keep track and manually increment the timestamp if it didn't increment by itself. This will
+     * mess with the actual time value but that is not much of an issue because everything will get squashed into a
+     * single moment at the end anyway.
+     */
+    private long prevTimestamp;
+
+    public SquashFilter(CompoundTag registries, String dimension, DimensionType dimensionType) {
+        this.registries = registries;
         this.dimension = dimension;
         this.dimensionType = dimensionType;
     }
 
     public SquashFilter(DimensionTracker dimensionTracker) {
-        this(dimensionTracker.dimension, dimensionTracker.dimensionType);
+        this(dimensionTracker.registries, dimensionTracker.dimension, dimensionTracker.dimensionType);
     }
 
     public SquashFilter copy() {
-        SquashFilter copy = new SquashFilter(this.dimension, this.dimensionType);
+        SquashFilter copy = new SquashFilter(this.registries, this.dimension, this.dimensionType);
         copy.registry = this.registry;
         copy.forgeHandshake = this.forgeHandshake;
         this.teams.forEach((key, value) -> copy.teams.put(key, value.copy()));
@@ -202,6 +216,7 @@ public class SquashFilter implements StreamFilter {
         this.latestOnly.forEach((key, value) -> copy.latestOnly.put(key, value.copy()));
         this.chunks.forEach((key, value) -> copy.chunks.put(key, value.copy()));
         copy.unloadedChunks.putAll(this.unloadedChunks);
+        copy.prevTimestamp = this.prevTimestamp;
         return copy;
     }
 
@@ -238,7 +253,11 @@ public class SquashFilter implements StreamFilter {
     }
 
     @Override
-    public boolean onPacket(PacketStream stream, PacketData data) throws IOException {
+    public boolean onPacket(PacketStream stream, PacketData originalData) throws IOException {
+        // Ensure timestamps are strictly increasing; just monotonically increasing is not enough; see prevTimestamp
+        PacketData data = new PacketData(Math.max(originalData.getTime(), prevTimestamp + 1), originalData.getPacket());
+        prevTimestamp = data.getTime();
+
         Packet packet = data.getPacket();
         PacketType type = packet.getType();
         registry = packet.getRegistry();
@@ -311,7 +330,7 @@ public class SquashFilter implements StreamFilter {
             case SpawnParticle:
                 break;
             case Respawn: {
-                PacketRespawn packetRespawn = PacketRespawn.read(packet);
+                PacketRespawn packetRespawn = PacketRespawn.read(packet, registries);
                 String newDimension = packetRespawn.dimension;
                 if (dimension == null) {
                     // We do not know which dimension we are current in, so we cannot know how to handle this packet.
@@ -347,6 +366,7 @@ public class SquashFilter implements StreamFilter {
                 entities.values().forEach(Entity::release);
                 entities.clear();
                 PacketJoinGame packetJoinGame = PacketJoinGame.read(packet);
+                registries = packetJoinGame.registry;
                 dimension = packetJoinGame.dimension;
                 dimensionType = packetJoinGame.dimensionType;
                 forgeHandshake = false;

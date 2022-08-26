@@ -22,7 +22,7 @@ import com.replaymod.replaystudio.protocol.Packet;
 import com.replaymod.replaystudio.protocol.PacketType;
 import com.replaymod.replaystudio.protocol.PacketTypeRegistry;
 import com.viaversion.viaversion.api.protocol.version.ProtocolVersion;
-import org.apache.commons.lang3.tuple.Triple;
+import com.replaymod.replaystudio.util.Property;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -42,10 +42,11 @@ public class PacketPlayerListEntry {
 
     private UUID uuid; // any action (1.8+)
     private String name; // only in ADD (or 1.7.10 REMOVE)
-    private List<Triple<String, String, String>> properties; // only in ADD (1.8+)
+    private List<Property> properties; // only in ADD (1.8+)
     private String displayName; // ADD or DISPLAY_NAME, nullable (1.8+)
     private int gamemode; // ADD or GAMEMODE (1.8+)
     private int latency; // ADD or latency
+    private SigData sigData; // ADD (1.19+)
 
     public static PacketPlayerListEntry updateGamemode(PacketPlayerListEntry entry, int gamemode) {
         entry = new PacketPlayerListEntry(entry);
@@ -92,21 +93,16 @@ public class PacketPlayerListEntry {
                     switch (action) {
                         case ADD:
                             entry.name = in.readString();
-                            int properties = in.readVarInt();
-                            entry.properties = new ArrayList<>(properties);
-                            for (int j = 0; j < properties; j++) {
-                                String property = in.readString();
-                                String value = in.readString();
-                                String signature = null;
-                                if (in.readBoolean()) {
-                                    signature = in.readString();
-                                }
-                                entry.properties.add(Triple.of(property, value, signature));
-                            }
+                            entry.properties = in.readList(() -> Property.read(in));
                             entry.gamemode = in.readVarInt();
                             entry.latency = in.readVarInt();
                             if (in.readBoolean()) {
                                 entry.displayName = in.readString();
+                            }
+                            if (packet.atLeast(ProtocolVersion.v1_19)) {
+                                if (in.readBoolean()) {
+                                    entry.sigData = SigData.read(in);
+                                }
                             }
                             break;
                         case GAMEMODE:
@@ -160,17 +156,7 @@ public class PacketPlayerListEntry {
                 switch (action) {
                     case ADD:
                         out.writeString(entry.name);
-                        out.writeVarInt(entry.properties.size());
-                        for (Triple<String, String, String> property : entry.properties) {
-                            out.writeString(property.getLeft());
-                            out.writeString(property.getMiddle());
-                            if (property.getRight() != null) {
-                                out.writeBoolean(true);
-                                out.writeString(property.getRight());
-                            } else {
-                                out.writeBoolean(false);
-                            }
-                        }
+                        out.writeList(entry.properties, it -> it.write(out));
                         out.writeVarInt(entry.gamemode);
                         out.writeVarInt(entry.latency);
                         if (entry.displayName != null) {
@@ -178,6 +164,14 @@ public class PacketPlayerListEntry {
                             out.writeString(entry.displayName);
                         } else {
                             out.writeBoolean(false);
+                        }
+                        if (packet.atLeast(ProtocolVersion.v1_19)) {
+                            if (entry.sigData != null) {
+                                out.writeBoolean(true);
+                                entry.sigData.write(out);
+                            } else {
+                                out.writeBoolean(false);
+                            }
                         }
                         break;
                     case GAMEMODE:
@@ -234,7 +228,7 @@ public class PacketPlayerListEntry {
         return name;
     }
 
-    public List<Triple<String, String, String>> getProperties() {
+    public List<Property> getProperties() {
         return properties;
     }
 
@@ -250,6 +244,10 @@ public class PacketPlayerListEntry {
         return latency;
     }
 
+    public SigData getSigData() {
+        return sigData;
+    }
+
     /**
      * Returns the key identifying the player which this packet relates to.
      * In 1.8+ that is the UUID, in 1.7 it's the name.
@@ -257,5 +255,32 @@ public class PacketPlayerListEntry {
      */
     public String getId() {
         return uuid != null ? uuid.toString() : name;
+    }
+
+    public static class SigData {
+        private final long expireTimestamp;
+        private final byte[] publicKey;
+        private final byte[] signature;
+
+        public SigData(long expireTimestamp, byte[] publicKey, byte[] signature) {
+            this.expireTimestamp = expireTimestamp;
+            this.publicKey = publicKey;
+            this.signature = signature;
+        }
+
+        public static SigData read(Packet.Reader in) throws IOException {
+            long expireTimestamp = in.readLong();
+            byte[] publicKey = in.readBytes(in.readVarInt());
+            byte[] signature = in.readBytes(in.readVarInt());
+            return new SigData(expireTimestamp, publicKey, signature);
+        }
+
+        public void write(Packet.Writer out) throws IOException {
+            out.writeLong(expireTimestamp);
+            out.writeVarInt(publicKey.length);
+            out.writeBytes(publicKey);
+            out.writeVarInt(signature.length);
+            out.writeBytes(signature);
+        }
     }
 }
