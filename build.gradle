@@ -4,9 +4,10 @@ plugins {
     id 'application'
     id 'com.github.johnrengelman.shadow' version '7.1.2'
     id 'net.minecraftforge.gradleutils' version '2.+'
+    id 'dev._100media.gradleutils' version '1.+'
 }
 
-group = 'com.replaymod.replaystudio'
+group = 'dev._100media.replaymod.replaystudio'
 description = 'ReplayStudio'
 version = gradleutils.getTagOffsetBranchVersion(null)
 println('Version: ' + version)
@@ -25,6 +26,9 @@ repositories {
     mavenCentral()
     maven {
         url 'https://jitpack.io'
+        content {
+            includeGroupByRegex 'com\\.github\\..*'
+        }
     }
     maven {
         url 'https://repo.viaversion.com'
@@ -110,9 +114,7 @@ shadowJar {
     }
 }
 
-artifacts {
-    shadowJar
-}
+assemble.dependsOn shadowJar
 
 publishing {
     publications {
@@ -121,17 +123,7 @@ publishing {
         }
     }
     repositories {
-        maven {
-            name = '100Media'
-            url = 'https://maven.100media.dev/' + (project.version.endsWith('-SNAPSHOT') ? 'public-snapshots' : 'public-releases')
-            credentials {
-                username = project.getProperty('hm_maven_username')
-                password = project.getProperty('hm_maven_password')
-            }
-            authentication {
-                basic(BasicAuthentication)
-            }
-        }
+        maven hundredMedia.getPublishing100MediaMaven()
         maven {
             name = 'MCMods'
             url = "file://${project.projectDir}/mcmodsrepo"
